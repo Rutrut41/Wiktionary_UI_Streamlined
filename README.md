@@ -64,7 +64,7 @@ All Wiktionary content is licensed under **Creative Commons Attribution–ShareA
 - **Attribution:** All content is provided by Wiktionary. You can access the original pages at [https://www.wiktionary.org/](https://www.wiktionary.org/).  
 - **Share-Alike:** Any extracted or modified Wiktionary content must remain under **CC BY-SA**.  
 
-
+## Ways to Support the Creator of this App
 If you like this project, you can:
 
 [**donate via PayPal**:](https://www.paypal.me/QKurmaskie)

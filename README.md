@@ -55,7 +55,7 @@ For example, searching for the word [“Ya” on Wiktionary](https://en.wiktiona
 
 
 If you like this project, you can:
-**donate via PayPal**:  
-[Donate here](https://www.paypal.me/QKurmaskie)
+
+[**donate via PayPal**:](https://www.paypal.me/QKurmaskie)
 Or
-[**Buy Me a Coffee**:](https://buymeacoffee.com/qkurmaskier) 
+[**Buy Me a Coffee**](https://buymeacoffee.com/qkurmaskier) 

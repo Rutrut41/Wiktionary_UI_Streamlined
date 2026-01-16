@@ -54,6 +54,17 @@ For example, searching for the word [“Ya” on Wiktionary](https://en.wiktiona
 - Feedback and contributions are welcome.
 
 
+
+## Credits & Licensing
+
+This project is a UI wrapper for [Wiktionary](https://www.wiktionary.org/), which is the source of all word definitions, etymologies, and other linguistic content displayed in this app.  
+
+All Wiktionary content is licensed under **Creative Commons Attribution–ShareAlike (CC BY-SA 3.0 / 4.0)**.  
+
+- **Attribution:** All content is provided by Wiktionary. You can access the original pages at [https://www.wiktionary.org/](https://www.wiktionary.org/).  
+- **Share-Alike:** Any extracted or modified Wiktionary content must remain under **CC BY-SA**.  
+
+
 If you like this project, you can:
 
 [**donate via PayPal**:](https://www.paypal.me/QKurmaskie)

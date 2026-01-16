@@ -67,6 +67,6 @@ All Wiktionary content is licensed under **Creative Commons Attribution–ShareA
 ## Ways to Support the Creator of this App
 If you like this project, you can:
 
-[**Donate Via PayPal**:](https://www.paypal.me/QKurmaskie)  
-Or
+[**Donate Via PayPal**](https://www.paypal.me/QKurmaskie)  
+**Or**  
 [**Buy Me a Coffee**](https://buymeacoffee.com/qkurmaskier) 

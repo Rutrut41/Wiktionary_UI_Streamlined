@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wiktionary Lookup</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<style>
+    /* Ensure redlinks are styled consistently */
+    .redlink {
+        color: #d00;
+        text-decoration: none;
+        cursor: not-allowed;
+    }
+    .results a {
+        text-decoration: underline;
+        color: #006;
+    }
+    .results a:hover {
+        text-decoration: none;
+    }
+</style>
+</head>
+<body>
+<div class="app-container">
+    <header class="search-bar">
+        <!-- Changed method to GET -->
+        <form method="GET" class="search-form">
+
+            <!-- Site language dropdown -->
+            <select name="site_language">
+                {% for name, code in displayed_languages.items() %}
+                    <option value="{{ code }}" {% if site_lang_code == code %}selected{% endif %}>
+                        {{ name }} (site)
+                    </option>
+                {% endfor %}
+            </select>
+
+            <!-- Entry language dropdown -->
+            <select name="entry_language">
+                {% for name, code in displayed_languages.items() %}
+                    <option value="{{ code }}" {% if entry_lang_code == code %}selected{% endif %}>
+                        {{ name }} (entry)
+                    </option>
+                {% endfor %}
+            </select>
+
+            <input type="text" name="word" placeholder="Enter a word" value="{{ word }}" required>
+            <button type="submit">Search</button>
+        </form>
+    </header>
+
+    <main class="results">
+        {% if definition %}
+        <div class="card">
+            <h2>{{ word }}</h2>
+            <div class="definition">
+                <!-- The cleaned HTML from Flask, including any redlinks -->
+                {{ definition|safe }}
+            </div>
+        </div>
+        {% else %}
+        <p>No definition found.</p>
+        {% endif %}
+    </main>
+</div>
+</body>
+</html>

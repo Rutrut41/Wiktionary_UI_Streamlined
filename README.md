@@ -15,6 +15,8 @@ For example, searching for the word [“Ya” on Wiktionary](https://en.wiktiona
 
 ---
 
+![Description](NEW_NEW_SCRGRAB_GOOD.gif)
+
 ## Features
 
 - Select a **specific language** from a dropdown menu and see only that language’s entry.  

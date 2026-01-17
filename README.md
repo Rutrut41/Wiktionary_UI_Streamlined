@@ -9,9 +9,12 @@
 
 This project is a **UI wrapper for Wiktionary** that allows you to select a specific language and view only the word results for that language. It streamlines the page layout, making the information more **readable and user-friendly**.  
 
-Wiktionary is a powerful tool for linguists and language enthusiasts, especially for quick references to a word's **etymology**. However, the normal Wiktionary site shows results for **all languages** in which a word exists.  
-
-For example, searching for the word [“Ya” on Wiktionary](https://en.wiktionary.org/wiki/ya) shows entries across multiple languages. This wrapper lets you focus on a single language at a time.
+This is a UI wrapper for Wiktionary.com that allows you to select the specific language that you are interested in seeing word results for, and returns only the information for that speicific language.
+It also (in my opinion) makes the resulting page look much more readable and understandable.
+Wiktionary is a very powerful tool for linguists and language enthusiasts alike, especially when getting a quick reference for a word's etymology.
+But on the normal Wiktionary site, when you look up a given word, you will get the results for ALL the languages in which that word exists. 
+For example, if you want to look up the word ["Ya" on the normal Wiktionary site[(https://en.wiktionary.org/wiki/ya), it shows the results for ya in **all** languages that that word exists in.
+That's why I made this wrapper, in order to make a powerful website's information much more accessible and streamlined for users. And when I say users, that includes myself, as since I started making this app about a month ago in my free time, I have consistently been using it when I want to: 1) check the etymology of a word, 2) for reference while reading academic linguistic papers, and 3) when I am getting better at a language I'm learning. 
 
 ---
 

@@ -4,6 +4,7 @@ import time
 from bs4 import BeautifulSoup
 from urllib.parse import unquote
 import json
+import difflib
 
 app = Flask(__name__)
 
@@ -16,24 +17,61 @@ with open("languages_reversed.json", "r", encoding="utf-8") as f:
     LANGUAGES = json.load(f)
 
 DISPLAYED_LANGUAGES = {
-    "English": "en", "Spanish": "es", "French": "fr", "Portuguese": "pt", "German": "de",
-    "Italian": "it", "Russian": "ru", "Chinese": "zh", "Dutch": "nl", "Polish": "pl",
-    "Swedish": "sv", "Finnish": "fi", "Hungarian": "hu", "Czech": "cs", "Japanese": "ja",
-    "Korean": "ko", "Turkish": "tr", "Arabic": "ar", "Greek": "el", "Catalan": "ca",
-    "Danish": "da", "Norwegian Bokmål": "no", "Esperanto": "eo", "Ukrainian": "uk",
-    "Serbo-Croatian": "sh", "Slovak": "sk", "Thai": "th", "Lithuanian": "lt", "Romanian": "ro",
-    "Hindi": "hi", "Bulgarian": "bg", "Estonian": "et", "Persian": "fa", "Icelandic": "is",
-    "Irish": "ga", "Basque": "eu", "Hebrew": "he", "Vietnamese": "vi", "Latin": "la",
-    "Malay": "ms", "Indonesian": "id", "Latvian": "lv", "Slovenian": "sl", "Breton": "br",
-    "Welsh": "cy", "Albanian": "sq", "Armenian": "hy", "Azerbaijani": "az", "Bengali": "bn",
-    "Swahili": "sw"
+    "Albanian": "sq", "Ancient Greek": "grc", "Arabic": "ar", "Armenian": "hy",
+    "Azerbaijani": "az", "Basque": "eu", "Bengali": "bn",
+    "Bulgarian": "bg", "Burmese": "my", "Catalan": "ca", "Cantonese": "yue", "Chinese": "zh",
+    "Czech": "cs", "Danish": "da", "Dutch": "nl", "English": "en",
+    "Esperanto": "eo", "Estonian": "et", "Finnish": "fi", "French": "fr",
+    "German": "de", "Greek": "el", "Haitian Creole": "ht", "Hebrew": "he",
+    "Hindi": "hi", "Hungarian": "hu", "Icelandic": "is", "Indonesian": "id",
+    "Irish": "ga", "Italian": "it", "Japanese": "ja", "Kazakh": "kk",
+    "Khmer": "km", "Korean": "ko", "Kurdish": "ku", "Latin": "la",
+    "Latvian": "lv", "Lithuanian": "lt", "Malay": "ms",
+    "Norwegian Bokmål": "no", "Persian": "fa", "Polish": "pl",
+    "Portuguese": "pt", "Romanian": "ro", "Russian": "ru",
+    "Serbo-Croatian": "sh", "Slovak": "sk", "Slovenian": "sl",
+    "Spanish": "es", "Swahili": "sw", "Swedish": "sv", "Tagalog": "tl",
+    "Thai": "th", "Turkish": "tr", "Ukrainian": "uk",
+    "Vietnamese": "vi", "Yoruba": "yo"
 }
+
 
 WIKTIONARY_API = "https://{site_lang}.wiktionary.org/w/api.php"
 CACHE = {}
 CACHE_EXPIRY = 3600
 REDLINK_STYLE = "color:#d00; text-decoration:none; cursor:not-allowed;"
+def suggest_wiktionary_word(word, site_lang_code="en", limit=5):
+    if not word:
+        return None
 
+    url = WIKTIONARY_API.format(site_lang=site_lang_code)
+    headers = {"User-Agent": "WiktionaryLookup/1.0"}
+
+    params = {
+        "action": "query",
+        "list": "search",
+        "srsearch": word,
+        "srlimit": limit,
+        "format": "json",
+        "origin": "*"
+    }
+
+    try:
+        r = requests.get(url, params=params, headers=headers, timeout=10)
+        r.raise_for_status()
+        results = r.json().get("query", {}).get("search", [])
+
+        if not results:
+            return None
+
+        titles = [r["title"] for r in results]
+
+        # Optional fuzzy re-ranking (helps with typos)
+        best = difflib.get_close_matches(word, titles, n=1, cutoff=0.6)
+        return best[0] if best else titles[0]
+
+    except Exception:
+        return None
 
 # --- HTML cleaning ---
 def clean_html(html, current_site_lang="en", word=None):
@@ -160,36 +198,91 @@ def fetch_wiktionary_entry(word, site_lang_code="en", entry_lang_code="en"):
     headers = {"User-Agent": "WiktionaryLookup/1.0"}
 
     try:
-        params_sections = {"action": "parse", "page": word, "format": "json", "prop": "sections", "origin": "*"}
+        # --- Fetch sections ---
+        params_sections = {
+            "action": "parse",
+            "page": word,
+            "format": "json",
+            "prop": "sections",
+            "origin": "*"
+        }
         response = requests.get(url, params=params_sections, headers=headers, timeout=15)
         response.raise_for_status()
+
         sections = response.json().get("parse", {}).get("sections", [])
         CACHE[(word.lower(), site_lang_code, "sections")] = (sections, time.time())
 
         section_id = find_section(sections, site_lang_code, entry_lang_code)
-        entry_name = next((name for name, code in DISPLAYED_LANGS_EXPANDED.get(site_lang_code, {}).items()
-                           if code == entry_lang_code), None) or entry_lang_code
+        entry_name = next(
+            (name for name, code in DISPLAYED_LANGS_EXPANDED.get(site_lang_code, {}).items()
+             if code == entry_lang_code),
+            None
+        ) or entry_lang_code
 
+        # --- Section exists ---
         if section_id:
-            params_text = {"action": "parse", "page": word, "format": "json", "prop": "text",
-                           "section": section_id, "origin": "*"}
+            params_text = {
+                "action": "parse",
+                "page": word,
+                "format": "json",
+                "prop": "text",
+                "section": section_id,
+                "origin": "*"
+            }
             response_text = requests.get(url, params=params_text, headers=headers, timeout=15)
             response_text.raise_for_status()
+
             html_content = response_text.json().get("parse", {}).get("text", {}).get("*", "")
+
             if html_content:
-                html_content = clean_html(html_content, current_site_lang=site_lang_code, word=word)
-                definition = f'<div>{html_content}</div>'
+                html_content = clean_html(
+                    html_content,
+                    current_site_lang=site_lang_code,
+                    word=word
+                )
+                definition = f"<div>{html_content}</div>"
                 CACHE[cache_key] = (definition, time.time())
                 return definition
-            else:
-                jump_anchor = entry_name.replace(" ", "_")
-                return f"No content found for {entry_name}. See: https://{site_lang_code}.wiktionary.org/wiki/{word}#{jump_anchor}"
-        else:
+
+            # --- Section exists but empty ---
+            suggestion = suggest_wiktionary_word(word, site_lang_code)
+            if suggestion and suggestion.lower() != word.lower():
+                return (
+                    f'The entry for <b>{word}</b> is empty.<br>'
+                    f'Did you mean '
+                    f'<a href="/link?word={suggestion}'
+                    f'&site_language={site_lang_code}'
+                    f'&entry_language={entry_lang_code}">'
+                    f'{suggestion}</a>?'
+                )
+
             jump_anchor = entry_name.replace(" ", "_")
-            return f"No section found for {entry_name}. See: https://{site_lang_code}.wiktionary.org/wiki/{word}#{jump_anchor}"
+            return (
+                f"The entry for {entry_name} is empty. "
+                f"See: https://{site_lang_code}.wiktionary.org/wiki/{word}#{jump_anchor}"
+            )
+
+        # --- Section missing entirely ---
+        suggestion = suggest_wiktionary_word(word, site_lang_code)
+        if suggestion and suggestion.lower() != word.lower():
+            return (
+                f'No entry found for <b>{word}</b>.<br>'
+                f'Did you mean '
+                f'<a href="/link?word={suggestion}'
+                f'&site_language={site_lang_code}'
+                f'&entry_language={entry_lang_code}">'
+                f'{suggestion}</a>?'
+            )
+
+        jump_anchor = entry_name.replace(" ", "_")
+        return (
+            f"No section found for {entry_name}. "
+            f"See: https://{site_lang_code}.wiktionary.org/wiki/{word}#{jump_anchor}"
+        )
 
     except requests.RequestException as e:
         return f"Error retrieving definition: {e}"
+
     except ValueError:
         return "Error decoding response from Wiktionary."
 
@@ -225,7 +318,7 @@ def fetch_wiktionary_entry_from_link(word, site_lang_code="en", entry_lang_code=
                 return definition
             else:
                 jump_anchor = entry_name.replace(" ", "_")
-                return f"No content found for {entry_name}. See: https://{site_lang_code}.wiktionary.org/wiki/{word}#{jump_anchor}"
+                return f"The entry for {entry_name} is empty. See: https://{site_lang_code}.wiktionary.org/wiki/{word}#{jump_anchor}"
         else:
             jump_anchor = entry_name.replace(" ", "_")
             return f"No section found for {entry_name}. See: https://{site_lang_code}.wiktionary.org/wiki/{word}#{jump_anchor}"

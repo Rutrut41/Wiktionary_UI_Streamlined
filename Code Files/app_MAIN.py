@@ -32,7 +32,7 @@ DISPLAYED_LANGUAGES = {
     "Serbo-Croatian": "sh", "Slovak": "sk", "Slovenian": "sl",
     "Spanish": "es", "Swahili": "sw", "Swedish": "sv", "Tagalog": "tl",
     "Thai": "th", "Turkish": "tr", "Ukrainian": "uk",
-    "Vietnamese": "vi", "Yoruba": "yo"
+    "Vietnamese": "vi", "Yoruba": "yo", "Lao": "lo",
 }
 
 

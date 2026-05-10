@@ -6,7 +6,6 @@
 <title>Wiktionary Lookup</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 <style>
-    /* Ensure redlinks are styled consistently */
     .redlink {
         color: #d00;
         text-decoration: none;
@@ -19,43 +18,134 @@
     .results a:hover {
         text-decoration: none;
     }
+
+    /* Searchable dropdown */
+    .ss-wrapper {
+        position: relative;
+        display: inline-block;
+    }
+    .ss-display {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 6px;
+        cursor: pointer;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        padding: 5px 10px;
+        background: #fff;
+        user-select: none;
+        min-width: 160px;
+        box-sizing: border-box;
+        font-size: 14px;
+    }
+    .ss-display:focus {
+        outline: 2px solid #4a90d9;
+        outline-offset: 1px;
+    }
+    .ss-arrow {
+        font-size: 10px;
+        color: #888;
+        transition: transform 0.15s;
+        flex-shrink: 0;
+    }
+    .ss-wrapper.open .ss-arrow {
+        transform: rotate(180deg);
+    }
+    .ss-dropdown {
+        display: none;
+        position: absolute;
+        top: calc(100% + 3px);
+        left: 0;
+        z-index: 9999;
+        background: #fff;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        box-shadow: 0 4px 14px rgba(0,0,0,0.15);
+        min-width: 100%;
+        max-height: 260px;
+        flex-direction: column;
+        overflow: hidden;
+    }
+    .ss-wrapper.open .ss-dropdown {
+        display: flex;
+    }
+    .ss-search {
+        border: none;
+        border-bottom: 1px solid #eee;
+        padding: 7px 10px;
+        font-size: 14px;
+        outline: none;
+        width: 100%;
+        box-sizing: border-box;
+    }
+    .ss-list {
+        overflow-y: auto;
+        flex: 1;
+    }
+    .ss-option {
+        padding: 6px 12px;
+        cursor: pointer;
+        font-size: 14px;
+        white-space: nowrap;
+    }
+    .ss-option:hover,
+    .ss-option.focused {
+        background: #eef3ff;
+    }
+    .ss-option.selected {
+        font-weight: 600;
+        color: #2a5bd7;
+    }
+    .ss-no-results {
+        padding: 8px 12px;
+        color: #999;
+        font-size: 13px;
+        font-style: italic;
+    }
 </style>
 </head>
 <body>
 <div class="app-container">
     <header class="search-bar">
-        <!-- Changed method to GET -->
         <form method="GET" class="search-form">
+            <!-- Hidden inputs that get submitted -->
+            <input type="hidden" name="site_language" id="site_language_val" value="{{ site_lang_code }}">
+            <input type="hidden" name="entry_language" id="entry_language_val" value="{{ entry_lang_code }}">
 
-            <!-- Site language dropdown -->
-            <select name="site_language">
-                {% for name, code in displayed_languages.items() %}
-                    <option value="{{ code }}" {% if site_lang_code == code %}selected{% endif %}>
-                        {{ name }} (site)
-                    </option>
-                {% endfor %}
-            </select>
+            <!-- Searchable site language dropdown -->
+            <div class="ss-wrapper" id="ss-site">
+                <div class="ss-display" tabindex="0">
+                    <span class="ss-label"></span>
+                    <span class="ss-arrow">▾</span>
+                </div>
+                <div class="ss-dropdown">
+                    <input class="ss-search" type="text" placeholder="Search…" autocomplete="off" spellcheck="false">
+                    <div class="ss-list"></div>
+                </div>
+            </div>
 
-            <!-- Entry language dropdown -->
-            <select name="entry_language">
-                {% for name, code in displayed_languages.items() %}
-                    <option value="{{ code }}" {% if entry_lang_code == code %}selected{% endif %}>
-                        {{ name }} (entry)
-                    </option>
-                {% endfor %}
-            </select>
+            <!-- Searchable entry language dropdown -->
+            <div class="ss-wrapper" id="ss-entry">
+                <div class="ss-display" tabindex="0">
+                    <span class="ss-label"></span>
+                    <span class="ss-arrow">▾</span>
+                </div>
+                <div class="ss-dropdown">
+                    <input class="ss-search" type="text" placeholder="Search…" autocomplete="off" spellcheck="false">
+                    <div class="ss-list"></div>
+                </div>
+            </div>
 
             <input type="text" name="word" placeholder="Enter a word" value="{{ word }}" required>
             <button type="submit">Search</button>
         </form>
     </header>
-
     <main class="results">
         {% if definition %}
         <div class="card">
             <h2>{{ word }}</h2>
             <div class="definition">
-                <!-- The cleaned HTML from Flask, including any redlinks -->
                 {{ definition|safe }}
             </div>
         </div>
@@ -66,5 +156,143 @@
         {% endif %}
     </main>
 </div>
+
+<script>
+const LANGUAGES = [
+    {% for name, code in displayed_languages.items() %}
+    { label: "{{ name }}", value: "{{ code }}" },
+    {% endfor %}
+];
+
+function initDropdown(wrapperId, hiddenInputId, currentValue, labelSuffix) {
+    const wrapper = document.getElementById(wrapperId);
+    const hiddenInput = document.getElementById(hiddenInputId);
+    const display = wrapper.querySelector(".ss-display");
+    const labelEl = wrapper.querySelector(".ss-label");
+    const dropdown = wrapper.querySelector(".ss-dropdown");
+    const searchInput = wrapper.querySelector(".ss-search");
+    const list = wrapper.querySelector(".ss-list");
+
+    let focusedIndex = -1;
+
+    function getFilteredOptions(filter) {
+        if (!filter) return LANGUAGES;
+        const q = filter.toLowerCase();
+        return LANGUAGES.filter(o => o.label.toLowerCase().includes(q));
+    }
+
+    function renderList(filter) {
+        const filtered = getFilteredOptions(filter);
+        list.innerHTML = "";
+        focusedIndex = -1;
+
+        if (!filtered.length) {
+            list.innerHTML = '<div class="ss-no-results">No results</div>';
+            return;
+        }
+
+        filtered.forEach((opt, i) => {
+            const item = document.createElement("div");
+            item.className = "ss-option" + (opt.value === hiddenInput.value ? " selected" : "");
+            item.textContent = opt.label + " (" + labelSuffix + ")";
+            item.dataset.value = opt.value;
+            item.dataset.index = i;
+
+            item.addEventListener("mousedown", (e) => {
+                e.preventDefault();
+                selectOption(opt);
+            });
+
+            list.appendChild(item);
+        });
+    }
+
+    function selectOption(opt) {
+        hiddenInput.value = opt.value;
+        labelEl.textContent = opt.label + " (" + labelSuffix + ")";
+        close();
+    }
+
+    function open() {
+        wrapper.classList.add("open");
+        searchInput.value = "";
+        renderList("");
+        searchInput.focus();
+        // Scroll selected into view
+        const selected = list.querySelector(".selected");
+        if (selected) selected.scrollIntoView({ block: "nearest" });
+    }
+
+    function close() {
+        wrapper.classList.remove("open");
+        focusedIndex = -1;
+    }
+
+    function moveFocus(dir) {
+        const items = list.querySelectorAll(".ss-option");
+        if (!items.length) return;
+        items[focusedIndex]?.classList.remove("focused");
+        focusedIndex = Math.max(0, Math.min(focusedIndex + dir, items.length - 1));
+        items[focusedIndex].classList.add("focused");
+        items[focusedIndex].scrollIntoView({ block: "nearest" });
+    }
+
+    // Toggle open/close on display click
+    display.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        wrapper.classList.contains("open") ? close() : open();
+    });
+
+    display.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " " || e.key === "ArrowDown") {
+            e.preventDefault();
+            open();
+        }
+    });
+
+    searchInput.addEventListener("input", () => {
+        renderList(searchInput.value);
+    });
+
+    searchInput.addEventListener("keydown", (e) => {
+        if (e.key === "ArrowDown") { e.preventDefault(); moveFocus(1); }
+        else if (e.key === "ArrowUp") { e.preventDefault(); moveFocus(-1); }
+        else if (e.key === "Enter") {
+            e.preventDefault();
+            const focused = list.querySelector(".focused");
+            if (focused) {
+                const opt = LANGUAGES.find(o => o.value === focused.dataset.value);
+                if (opt) selectOption(opt);
+            }
+        }
+        else if (e.key === "Escape") { close(); display.focus(); }
+    });
+
+    // Close on outside click
+    document.addEventListener("mousedown", (e) => {
+        if (!wrapper.contains(e.target)) close();
+    });
+
+    // Set initial label
+    const current = LANGUAGES.find(o => o.value === currentValue);
+    labelEl.textContent = current
+        ? current.label + " (" + labelSuffix + ")"
+        : labelSuffix;
+}
+
+initDropdown("ss-site",   "site_language_val",  "{{ site_lang_code }}",  "site");
+initDropdown("ss-entry",  "entry_language_val", "{{ entry_lang_code }}", "entry");
+</script>
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has("site_language") && !params.has("entry_language")) {
+        const browserLang = navigator.language.split("-")[0];
+        params.set("site_language", browserLang);
+        params.set("entry_language", browserLang);
+        window.location.replace("?" + params.toString());
+    }
+});
+</script>
 </body>
 </html>

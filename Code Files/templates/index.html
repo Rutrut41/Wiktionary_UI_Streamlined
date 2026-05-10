@@ -260,8 +260,9 @@ function initDropdown(wrapperId, hiddenInputId, currentValue, labelSuffix) {
         else if (e.key === "Enter") {
             e.preventDefault();
             const focused = list.querySelector(".focused");
-            if (focused) {
-                const opt = LANGUAGES.find(o => o.value === focused.dataset.value);
+            const target = focused || list.querySelector(".ss-option");
+            if (target) {
+                const opt = LANGUAGES.find(o => o.value === target.dataset.value);
                 if (opt) selectOption(opt);
             }
         }

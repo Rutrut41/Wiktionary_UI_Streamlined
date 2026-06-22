@@ -1,0 +1,137 @@
+// ==UserScript==
+// @name         Google Translate to Wiktionary
+// @namespace    http://tampermonkey.net/
+// @version      3.0
+// @description  Add Wiktionary search buttons to both source and target boxes
+// @author       You
+// @match        https://translate.google.com/*
+// @grant        none
+// @run-at       document-end
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    const langMap = {
+        'af': 'af', 'am': 'am', 'ar': 'ar', 'bg': 'bg', 'bn': 'bn',
+        'ca': 'ca', 'cs': 'cs', 'cy': 'cy', 'da': 'da', 'de': 'de',
+        'el': 'el', 'en': 'en', 'es': 'es', 'et': 'et', 'fa': 'fa',
+        'fi': 'fi', 'fr': 'fr', 'gu': 'gu', 'he': 'he', 'hi': 'hi',
+        'hr': 'hr', 'hu': 'hu', 'id': 'id', 'it': 'it', 'ja': 'ja',
+        'kn': 'kn', 'ko': 'ko', 'lt': 'lt', 'lv': 'lv', 'mk': 'mk',
+        'ml': 'ml', 'mr': 'mr', 'ne': 'ne', 'nl': 'nl', 'no': 'no',
+        'pa': 'pa', 'pl': 'pl', 'pt': 'pt', 'ro': 'ro', 'ru': 'ru',
+        'sk': 'sk', 'sl': 'sl', 'so': 'so', 'sq': 'sq', 'sv': 'sv',
+        'sw': 'sw', 'ta': 'ta', 'te': 'te', 'th': 'th', 'tl': 'tl',
+        'tr': 'tr', 'uk': 'uk', 'ur': 'ur', 'vi': 'vi', 'zh': 'zh'
+    };
+
+    function getSourceLanguage() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const sl = urlParams.get('sl');
+        return (sl && sl !== 'auto') ? sl.split('-')[0] : 'en';
+    }
+
+    function getTargetLanguage() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const tl = urlParams.get('tl');
+        return tl ? tl.split('-')[0] : 'en';
+    }
+
+    function getSourceText() {
+        const el = document.querySelector('textarea[aria-label*="Source text"], textarea[aria-label*="source"]');
+        return el ? el.value.trim() : '';
+    }
+
+    function getTargetText() {
+        const el = document.querySelector('span.ryNqvb');
+        return el ? el.textContent.trim() : '';
+    }
+
+    function btnStyle() {
+        return `
+            display: inline-block;
+            padding: 0;
+            background: none;
+            border: none;
+            font-size: .875rem;
+            font-family: Google Sans, Roboto, Arial, sans-serif;
+            font-weight: 500;
+            color: #1a73e8;
+            cursor: pointer;
+            letter-spacing: .0107142857em;
+            text-decoration: none;
+            outline: none;
+        `;
+    }
+
+    function wrapBtn(btn) {
+        const div = document.createElement('div');
+        div.style.cssText = 'display:block; padding: 4px 16px 8px;';
+        div.appendChild(btn);
+        return div;
+    }
+
+    function createSourceButton() {
+        if (document.getElementById('wiktionary-btn-source')) return;
+        const lang = getSourceLanguage();
+        if (!lang || !langMap[lang]) return;
+
+        const textarea = document.querySelector('textarea[aria-label*="Source text"], textarea[aria-label*="source"]');
+        if (!textarea) return;
+        const container = textarea.parentElement?.parentElement;
+        if (!container) return;
+
+        const btn = document.createElement('button');
+        btn.id = 'wiktionary-btn-source';
+        btn.textContent = 'search on wiktionary wrap';
+        btn.style.cssText = btnStyle();
+        btn.addEventListener('mouseover', () => btn.style.textDecoration = 'underline');
+        btn.addEventListener('mouseout', () => btn.style.textDecoration = 'none');
+        btn.addEventListener('click', () => {
+            const text = getSourceText();
+            const l = getSourceLanguage();
+            if (!text || !langMap[l]) return;
+            window.open(`https://rutrut41.pythonanywhere.com/?site_language=en&entry_language=${langMap[l]}&word=${encodeURIComponent(text)}`, '_blank');
+        });
+
+        container.insertAdjacentElement('afterend', wrapBtn(btn));
+    }
+
+    function createTargetButton() {
+        if (document.getElementById('wiktionary-btn-target')) return;
+        const lang = getTargetLanguage();
+        if (!lang || !langMap[lang]) return;
+
+        const anchor = document.querySelector('div.KkbLmb');
+        if (!anchor) return;
+
+        const btn = document.createElement('button');
+        btn.id = 'wiktionary-btn-target';
+        btn.textContent = 'search on wiktionary wrap';
+        btn.style.cssText = btnStyle();
+        btn.addEventListener('mouseover', () => btn.style.textDecoration = 'underline');
+        btn.addEventListener('mouseout', () => btn.style.textDecoration = 'none');
+        btn.addEventListener('click', () => {
+            const text = getTargetText();
+            const l = getTargetLanguage();
+            if (!text || !langMap[l]) return;
+            window.open(`https://rutrut41.pythonanywhere.com/?site_language=en&entry_language=${langMap[l]}&word=${encodeURIComponent(text)}`, '_blank');
+        });
+
+        anchor.insertAdjacentElement('afterend', wrapBtn(btn));
+    }
+
+    setTimeout(() => {
+        createSourceButton();
+        createTargetButton();
+    }, 800);
+
+    const observer = new MutationObserver(() => {
+        if (!document.getElementById('wiktionary-btn-source')) createSourceButton();
+        if (!document.getElementById('wiktionary-btn-target')) createTargetButton();
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+
+})();

@@ -140,8 +140,33 @@
             <input type="text" name="word" placeholder="Enter a word" value="{{ word }}" required>
             <button type="submit">Search</button>
         </form>
+        {% if show_all_switch %}
+        <div class="all-entries-bar">
+            <a class="all-entries-switch{% if all_entries %} on{% endif %}" href="{{ switch_url }}">
+                <span class="switch-track"><span class="switch-thumb"></span></span>
+                <span>All entries on this page</span>
+                <span class="switch-spinner"></span>
+            </a>
+            {% if all_entries %}
+            <nav class="entry-jump">
+                {% for section in entry_sections %}
+                <a href="#{{ section.anchor }}">{{ section.line }}</a>
+                {% endfor %}
+            </nav>
+            {% else %}
+            <span class="all-entries-hint">Showing Chinese only</span>
+            {% endif %}
+        </div>
+        {% elif chinese_url %}
+        <div class="all-entries-bar">
+            <a class="chinese-page-btn" href="{{ chinese_url }}">
+                <span>Go to Chinese page</span>
+                <span class="switch-spinner"></span>
+            </a>
+        </div>
+        {% endif %}
     </header>
-    <main class="results">
+    <main class="results{% if show_all_switch or chinese_url %} has-all-switch{% endif %}">
         {% if definition %}
         <div class="card">
             <h2>{{ word }}</h2>
@@ -294,6 +319,23 @@ document.addEventListener("DOMContentLoaded", function() {
         window.location.replace("?" + params.toString());
     }
 });
+
+// Spinner next to the all entries switch / Chinese page button while the next page loads
+for (const link of document.querySelectorAll(".all-entries-switch, .chinese-page-btn")) {
+    link.addEventListener("click", (e) => {
+        if (!e.metaKey && !e.ctrlKey && !e.shiftKey) link.classList.add("loading");
+    });
+    // The back button restores the page as it was left, spinner included
+    window.addEventListener("pageshow", () => link.classList.remove("loading"));
+}
+
+// Jump links land below the sticky bar, whose height depends on the window width
+const searchBar = document.querySelector(".search-bar");
+function setBarHeight() {
+    document.documentElement.style.setProperty("--search-bar-height", (searchBar.offsetHeight + 32) + "px");
+}
+setBarHeight();
+window.addEventListener("resize", setBarHeight);
 </script>
 </body>
 </html>

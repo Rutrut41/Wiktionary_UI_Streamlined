@@ -1,5 +1,6 @@
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, url_for
 import requests
+import re
 import time
 from bs4 import BeautifulSoup
 from urllib.parse import unquote
@@ -40,6 +41,9 @@ WIKTIONARY_API = "https://{site_lang}.wiktionary.org/w/api.php"
 CACHE = {}
 CACHE_EXPIRY = 3600
 REDLINK_STYLE = "color:#d00; text-decoration:none; cursor:not-allowed;"
+HAN_CHARS = re.compile("[\u3007\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\U00020000-\U0003ffff]")
+SINO_ENTRY_LANGS = ("ko", "vi", "ja")
+
 def suggest_wiktionary_word(word, site_lang_code="en", limit=5):
     if not word:
         return None
@@ -90,7 +94,7 @@ def clean_html(html, current_site_lang="en", word=None):
 
     for a in soup.find_all("a", href=True):
         href = a["href"]
-        if href.startswith("http://") or href.startswith("https://"):
+        if href.startswith(("http://", "https://", "#")):
             continue
 
         if "redlink=1" in href:
@@ -329,14 +333,61 @@ def fetch_wiktionary_entry_from_link(word, site_lang_code="en", entry_lang_code=
         return "Error decoding response from Wiktionary."
 
 
-# --- Routes ---
-@app.route("/", methods=["GET"])
-def index():
-    word = request.args.get("word", "").strip().lower()
-    site_lang_code = request.args.get("site_language", "en")
-    entry_lang_code = request.args.get("entry_language", "en")
+# --- All entries on a page, as the main site shows them ---
+def fetch_all_entries(word, site_lang_code="en"):
+    cache_key = (word.lower(), site_lang_code, None)  # None can't clash with an entry_language from the URL
+    cached = CACHE.get(cache_key)
+    if cached and time.time() - cached[1] < CACHE_EXPIRY:
+        return cached[0]
 
-    definition = fetch_wiktionary_entry(word, site_lang_code, entry_lang_code) if word else ""
+    url = WIKTIONARY_API.format(site_lang=site_lang_code)
+    headers = {"User-Agent": "WiktionaryLookup/1.0"}
+
+    try:
+        params = {"action": "parse", "page": word, "format": "json", "prop": "text|sections", "origin": "*"}
+        response = requests.get(url, params=params, headers=headers, timeout=15)
+        response.raise_for_status()
+        parsed = response.json().get("parse", {})
+        html_content = parsed.get("text", {}).get("*", "")
+        if not html_content:
+            return "No entries found on this page.", []
+
+        sections = parsed.get("sections", [])
+        CACHE[(word.lower(), site_lang_code, "sections")] = (sections, time.time())
+        html_content = clean_html(html_content, current_site_lang=site_lang_code, word=word)
+        result = (f"<div>{html_content}</div>", [s for s in sections if s.get("toclevel") == 1])
+        CACHE[cache_key] = (result, time.time())
+        return result
+
+    except requests.RequestException as e:
+        return f"Error retrieving definition: {e}", []
+    except ValueError:
+        return "Error decoding response from Wiktionary.", []
+
+
+# --- Routes ---
+def render_lookup(word, site_lang_code, entry_lang_code, fetch_entry):
+    has_han = bool(HAN_CHARS.search(word))
+    show_all_switch = entry_lang_code == "zh" and has_han
+    all_entries = show_all_switch and request.args.get("all_entries") == "1"
+
+    entry_sections = []
+    if all_entries:
+        definition, entry_sections = fetch_all_entries(word, site_lang_code)
+    else:
+        definition = fetch_entry(word, site_lang_code, entry_lang_code) if word else ""
+
+    # The switch is a link to this same page with all_entries flipped.
+    switch_params = {"word": word, "site_language": site_lang_code, "entry_language": entry_lang_code}
+    if not all_entries:
+        switch_params["all_entries"] = "1"
+
+    # Sino-Korean etc. pages say little: link to the Chinese entry when there is one.
+    chinese_url = None
+    if entry_lang_code in SINO_ENTRY_LANGS and has_han:
+        sections_cached = CACHE.get((word.lower(), site_lang_code, "sections"))
+        if sections_cached and find_section(sections_cached[0], site_lang_code, "zh"):
+            chinese_url = url_for("link_redirect", word=word, site_language=site_lang_code, entry_language="zh")
 
     return render_template(
         "index.html",
@@ -345,8 +396,22 @@ def index():
         displayed_languages=DISPLAYED_LANGUAGES,
         all_languages=LANGUAGES,
         site_lang_code=site_lang_code,
-        entry_lang_code=entry_lang_code
+        entry_lang_code=entry_lang_code,
+        show_all_switch=show_all_switch,
+        all_entries=all_entries,
+        entry_sections=entry_sections,
+        switch_url=url_for(request.endpoint, **switch_params),
+        chinese_url=chinese_url
     )
+
+
+@app.route("/", methods=["GET"])
+def index():
+    word = request.args.get("word", "").strip().lower()
+    site_lang_code = request.args.get("site_language", "en")
+    entry_lang_code = request.args.get("entry_language", "en")
+
+    return render_lookup(word, site_lang_code, entry_lang_code, fetch_wiktionary_entry)
 
 
 @app.route("/link", methods=["GET"])
@@ -355,17 +420,7 @@ def link_redirect():
     site_lang_code = request.args.get("site_language", "en")
     entry_lang_code = request.args.get("entry_language", site_lang_code)
 
-    definition = fetch_wiktionary_entry_from_link(word, site_lang_code, entry_lang_code) if word else ""
-
-    return render_template(
-        "index.html",
-        word=word,
-        definition=definition,
-        displayed_languages=DISPLAYED_LANGUAGES,
-        all_languages=LANGUAGES,
-        site_lang_code=site_lang_code,
-        entry_lang_code=entry_lang_code
-    )
+    return render_lookup(word, site_lang_code, entry_lang_code, fetch_wiktionary_entry_from_link)
 
 
 if __name__ == "__main__":

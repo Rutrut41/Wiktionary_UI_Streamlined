@@ -16,7 +16,11 @@
         "Malay":         "ms",  "Indonesian":    "id",  "Latvian":       "lv",
         "Slovenian":     "sl",  "Breton":        "br",  "Welsh":         "cy",
         "Albanian":      "sq",  "Armenian":      "hy",  "Azerbaijani":   "az",
-        "Bengali":       "bn",  "Swahili":       "sw"
+        "Bengali":       "bn",  "Swahili":       "sw",  "Assamese":      "as",
+        "Kannada":       "kn",  "Lingala":       "ln",  "Malayalam":     "ml",
+        "Marathi":       "mr",  "Mongolian":     "mn",  "Nepali":        "ne",
+        "Oromo":         "om",  "Punjabi":       "pa",  "Tamil":         "ta",
+        "Telugu":        "te",  "Rwanda-Rundi":  "rw",  "Sinhalese":     "si"
     },
 
     "es": {

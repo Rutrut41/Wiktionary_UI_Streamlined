@@ -2,7 +2,8 @@ from flask import Flask, render_template, request, url_for
 import requests
 import re
 import time
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
+from html import escape
 from urllib.parse import unquote
 import json
 import difflib
@@ -19,21 +20,24 @@ with open("languages_reversed.json", "r", encoding="utf-8") as f:
 
 DISPLAYED_LANGUAGES = {
     "Albanian": "sq", "Ancient Greek": "grc", "Arabic": "ar", "Armenian": "hy",
-    "Azerbaijani": "az", "Basque": "eu", "Bengali": "bn",
-    "Bulgarian": "bg", "Burmese": "my", "Catalan": "ca", "Cantonese": "yue", "Chinese": "zh",
-    "Czech": "cs", "Danish": "da", "Dutch": "nl", "English": "en",
-    "Esperanto": "eo", "Estonian": "et", "Finnish": "fi", "French": "fr",
-    "German": "de", "Greek": "el", "Haitian Creole": "ht", "Hebrew": "he",
-    "Hindi": "hi", "Hungarian": "hu", "Icelandic": "is", "Indonesian": "id",
-    "Irish": "ga", "Italian": "it", "Japanese": "ja", "Kazakh": "kk",
-    "Khmer": "km", "Korean": "ko", "Kurdish": "ku", "Latin": "la",
-    "Latvian": "lv", "Lithuanian": "lt", "Malay": "ms",
-    "Norwegian Bokmål": "no", "Persian": "fa", "Polish": "pl",
-    "Portuguese": "pt", "Romanian": "ro", "Russian": "ru",
-    "Serbo-Croatian": "sh", "Slovak": "sk", "Slovenian": "sl",
+    "Assamese": "as", "Azerbaijani": "az", "Basque": "eu", "Bengali": "bn",
+    "Breton": "br", "Bulgarian": "bg", "Burmese": "my", "Cantonese": "yue",
+    "Catalan": "ca", "Chinese": "zh", "Czech": "cs", "Danish": "da",
+    "Dutch": "nl", "English": "en", "Esperanto": "eo", "Estonian": "et",
+    "Finnish": "fi", "French": "fr", "German": "de", "Greek": "el",
+    "Haitian Creole": "ht", "Hebrew": "he", "Hindi": "hi", "Hungarian": "hu",
+    "Icelandic": "is", "Indonesian": "id", "Irish": "ga", "Italian": "it",
+    "Japanese": "ja", "Kannada": "kn", "Kazakh": "kk", "Khmer": "km",
+    "Kinyarwanda": "rw", "Korean": "ko", "Kurdish": "ku", "Lao": "lo",
+    "Latin": "la", "Latvian": "lv", "Lingala": "ln", "Lithuanian": "lt",
+    "Malay": "ms", "Malayalam": "ml", "Marathi": "mr", "Nepali": "ne",
+    "Norwegian Bokmål": "no", "Oromo": "om", "Persian": "fa", "Polish": "pl",
+    "Portuguese": "pt", "Punjabi": "pa", "Romanian": "ro", "Russian": "ru",
+    "Serbo-Croatian": "sh", "Sinhala": "si", "Slovak": "sk", "Slovenian": "sl",
     "Spanish": "es", "Swahili": "sw", "Swedish": "sv", "Tagalog": "tl",
-    "Thai": "th", "Turkish": "tr", "Ukrainian": "uk",
-    "Vietnamese": "vi", "Yoruba": "yo", "Lao": "lo",
+    "Tamil": "ta", "Telugu": "te", "Thai": "th", "Turkish": "tr",
+    "Ukrainian": "uk", "Vietnamese": "vi", "Welsh": "cy", "Yoruba": "yo",
+    "Mongolian": "mn",
 }
 
 
@@ -188,7 +192,48 @@ def find_section(sections, site_lang_code, entry_lang_code):
     return None
 
 
+# --- Section extraction ---
+def extract_section(page_html, sections, section_id):
+    """
+    Cuts one section out of the whole page's HTML. Parsing a section on its own
+    breaks templates that need the rest of the page (like etymon in etymologies).
+    Keeps the mw-parser-output class and every style tag, which template styles need.
+    """
+    section = next((s for s in sections if s.get("index") == section_id), None)
+    soup = BeautifulSoup(page_html, "html.parser")
+    heading = soup.find(f"h{section['level']}", id=section["anchor"]) if section else None
+    if not heading:
+        return ""
+
+    stops = {f"mw-heading{n}" for n in range(1, int(section["level"]) + 1)}
+    node = heading.parent
+    output = soup.new_tag("div", attrs={"class": "mw-parser-output"})
+    output.extend(soup.find_all("style"))
+    while node:
+        next_node = node.next_sibling
+        output.append(node)
+        node = next_node
+        if isinstance(node, Tag) and stops & set(node.get("class", [])):
+            break
+
+    return str(output)
+
+
 # --- Wiktionary fetching ---
+def fetch_page(word, site_lang_code="en"):
+    url = WIKTIONARY_API.format(site_lang=site_lang_code)
+    headers = {"User-Agent": "WiktionaryLookup/1.0"}
+
+    params = {"action": "parse", "page": word, "format": "json", "prop": "text|sections", "origin": "*"}
+    response = requests.get(url, params=params, headers=headers, timeout=15)
+    response.raise_for_status()
+
+    parsed = response.json().get("parse", {})
+    sections = parsed.get("sections", [])
+    CACHE[(word.lower(), site_lang_code, "sections")] = (sections, time.time())
+    return parsed.get("text", {}).get("*", ""), sections
+
+
 def fetch_wiktionary_entry(word, site_lang_code="en", entry_lang_code="en"):
     if not word:
         return ""
@@ -198,23 +243,8 @@ def fetch_wiktionary_entry(word, site_lang_code="en", entry_lang_code="en"):
     if cached and time.time() - cached[1] < CACHE_EXPIRY:
         return cached[0]
 
-    url = WIKTIONARY_API.format(site_lang=site_lang_code)
-    headers = {"User-Agent": "WiktionaryLookup/1.0"}
-
     try:
-        # --- Fetch sections ---
-        params_sections = {
-            "action": "parse",
-            "page": word,
-            "format": "json",
-            "prop": "sections",
-            "origin": "*"
-        }
-        response = requests.get(url, params=params_sections, headers=headers, timeout=15)
-        response.raise_for_status()
-
-        sections = response.json().get("parse", {}).get("sections", [])
-        CACHE[(word.lower(), site_lang_code, "sections")] = (sections, time.time())
+        page_html, sections = fetch_page(word, site_lang_code)
 
         section_id = find_section(sections, site_lang_code, entry_lang_code)
         entry_name = next(
@@ -225,18 +255,7 @@ def fetch_wiktionary_entry(word, site_lang_code="en", entry_lang_code="en"):
 
         # --- Section exists ---
         if section_id:
-            params_text = {
-                "action": "parse",
-                "page": word,
-                "format": "json",
-                "prop": "text",
-                "section": section_id,
-                "origin": "*"
-            }
-            response_text = requests.get(url, params=params_text, headers=headers, timeout=15)
-            response_text.raise_for_status()
-
-            html_content = response_text.json().get("parse", {}).get("text", {}).get("*", "")
+            html_content = extract_section(page_html, sections, section_id)
 
             if html_content:
                 html_content = clean_html(
@@ -278,6 +297,9 @@ def fetch_wiktionary_entry(word, site_lang_code="en", entry_lang_code="en"):
                 f'{suggestion}</a>?'
             )
 
+        if not page_html:
+            return f"No entry found for {escape(word)}."
+
         jump_anchor = entry_name.replace(" ", "_")
         return (
             f"No section found for {entry_name}. "
@@ -295,26 +317,15 @@ def fetch_wiktionary_entry_from_link(word, site_lang_code="en", entry_lang_code=
     if not word:
         return ""
 
-    url = WIKTIONARY_API.format(site_lang=site_lang_code)
-    headers = {"User-Agent": "WiktionaryLookup/1.0"}
-
     try:
-        params_sections = {"action": "parse", "page": word, "format": "json", "prop": "sections", "origin": "*"}
-        response = requests.get(url, params=params_sections, headers=headers, timeout=15)
-        response.raise_for_status()
-        sections = response.json().get("parse", {}).get("sections", [])
-        CACHE[(word.lower(), site_lang_code, "sections")] = (sections, time.time())
+        page_html, sections = fetch_page(word, site_lang_code)
 
         section_id = find_section(sections, site_lang_code, entry_lang_code)
         entry_name = next((name for name, code in DISPLAYED_LANGS_EXPANDED.get(site_lang_code, {}).items()
                            if code == entry_lang_code), None) or entry_lang_code
 
         if section_id:
-            params_text = {"action": "parse", "page": word, "format": "json", "prop": "text",
-                           "section": section_id, "origin": "*"}
-            response_text = requests.get(url, params=params_text, headers=headers, timeout=15)
-            response_text.raise_for_status()
-            html_content = response_text.json().get("parse", {}).get("text", {}).get("*", "")
+            html_content = extract_section(page_html, sections, section_id)
             if html_content:
                 html_content = clean_html(html_content, current_site_lang=site_lang_code, word=word)
                 definition = f'<div>{html_content}</div>'
@@ -323,6 +334,8 @@ def fetch_wiktionary_entry_from_link(word, site_lang_code="en", entry_lang_code=
             else:
                 jump_anchor = entry_name.replace(" ", "_")
                 return f"The entry for {entry_name} is empty. See: https://{site_lang_code}.wiktionary.org/wiki/{word}#{jump_anchor}"
+        elif not page_html:
+            return f"No entry found for {escape(word)}."
         else:
             jump_anchor = entry_name.replace(" ", "_")
             return f"No section found for {entry_name}. See: https://{site_lang_code}.wiktionary.org/wiki/{word}#{jump_anchor}"
@@ -340,20 +353,11 @@ def fetch_all_entries(word, site_lang_code="en"):
     if cached and time.time() - cached[1] < CACHE_EXPIRY:
         return cached[0]
 
-    url = WIKTIONARY_API.format(site_lang=site_lang_code)
-    headers = {"User-Agent": "WiktionaryLookup/1.0"}
-
     try:
-        params = {"action": "parse", "page": word, "format": "json", "prop": "text|sections", "origin": "*"}
-        response = requests.get(url, params=params, headers=headers, timeout=15)
-        response.raise_for_status()
-        parsed = response.json().get("parse", {})
-        html_content = parsed.get("text", {}).get("*", "")
+        html_content, sections = fetch_page(word, site_lang_code)
         if not html_content:
             return "No entries found on this page.", []
 
-        sections = parsed.get("sections", [])
-        CACHE[(word.lower(), site_lang_code, "sections")] = (sections, time.time())
         html_content = clean_html(html_content, current_site_lang=site_lang_code, word=word)
         result = (f"<div>{html_content}</div>", [s for s in sections if s.get("toclevel") == 1])
         CACHE[cache_key] = (result, time.time())
